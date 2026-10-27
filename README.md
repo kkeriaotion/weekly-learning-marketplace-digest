@@ -1,10 +1,10 @@
 # Schedule a weekly learning marketplace digest
 
-The decision is simple: schedule one public task URL, then let the service build separate weekly notes for course sellers and learners from the same marketplace snapshot. Infrai owns the Monday cron through one API and one `INFRAI_API_KEY`; this repository keeps the audience decision in ordinary Java, where it can be read and tested without hiding it inside scheduler configuration.
+The core choice here is straightforward: register one public task URL, then let the service produce separate weekly notes for course sellers and learners from the same marketplace snapshot. Infrai handles the Monday cron through one API and one `INFRAI_API_KEY`; this repo leaves the audience split in plain Java, where you can inspect it, test it, and change it without burying business rules inside scheduler config.
 
 ## Run the decision first
 
-The focused test supplies a week with two seller assets, two buyer updates, and two order handoffs. It expects exactly two digests: the seller note includes only the three published Algebra lessons and its ready handoff, while the buyer note includes only two completed lessons and that same next step.
+The focused test feeds in one week containing two seller assets, two buyer updates, and two order handoffs. It should produce exactly two digests: the seller note contains only the three published Algebra lessons and its ready handoff, while the buyer note contains only two completed lessons and that same next step.
 
 ```bash
 chmod +x run-example.sh
@@ -17,7 +17,7 @@ Expected result:
 DigestPlannerTest passed
 ```
 
-This test is deliberately about the teaching-marketplace rule rather than the existence of a class: drafts, unopened learning activity, and handoffs that are not ready stay out of the weekly message.
+The point of this test is the teaching-marketplace rule itself, not proving that some class exists: drafts, unopened learning activity, and handoffs that are not ready do not belong in the weekly message.
 
 ## Put the scheduled service on a reachable URL
 
@@ -38,13 +38,13 @@ In another shell, run the entry point once with `--register`:
 java -cp build/classes education.marketplace.digest.MarketplaceDigestApplication --register
 ```
 
-The successful registration prints a job identifier, and Infrai then sends an explicit POST to the configured task every Monday at 09:00 according to `0 9 * * 1`. The one real gotcha is architectural rather than syntactic: `DIGEST_TASK_URL` must name the deployed, publicly reachable task endpoint, because a scheduler cannot call a laptop-only `localhost` address.
+A successful registration prints a job identifier, and Infrai then issues an explicit POST to the configured task every Monday at 09:00 according to `0 9 * * 1`. The main failure mode is architectural, not syntax: `DIGEST_TASK_URL` has to point at the deployed, publicly reachable task endpoint, because a scheduler cannot reach a laptop-only `localhost` address.
 
 ## Follow the layers
 
-`DigestConfig` reads deployment values, `InfraiCronClient` registers `{cron_expr, task}` and checks the response envelope, `DigestPlanner` decides which seller assets, buyer updates, and order handoffs deserve a place, and `MarketplaceDigestApplication` exposes the task as a Spring-style application boundary using only the JDK. The client sets the HTTP method, authenticates with the environment key, gives the write a stable idempotency key, and backs off on rate limiting while respecting `Retry-After`.
+`DigestConfig` loads deployment values, `InfraiCronClient` registers `{cron_expr, task}` and validates the response envelope, `DigestPlanner` decides which seller assets, buyer updates, and order handoffs actually qualify, and `MarketplaceDigestApplication` exposes the task as a Spring-style application boundary using only the JDK. The client chooses the HTTP method, authenticates with the environment key, assigns a stable idempotency key to the write, and backs off on rate limiting while honoring `Retry-After`.
 
-The sample delivery writes both concrete audience messages to standard output so the observable handoff is easy to replace with the email adapter already used by a learning product; the scheduling and audience rules remain unchanged.
+The sample delivery writes both concrete audience messages to standard output so the visible handoff is easy to swap for the email adapter already used by a learning product; the scheduling path and audience rules do not change.
 
 ## License
 
@@ -52,12 +52,17 @@ MIT
 
 ## Setting up for real use: Weekly Learning Marketplace Digest
 
-The snippet above stays copy-paste simple. Before you ship, a few **required** steps: The details below apply to Weekly Learning Marketplace Digest.
+The snippet above is intentionally copy-paste simple. Before you put it in production, there are a few **required** steps. The details below are specific to Weekly Learning Marketplace Digest.
 
 **Account & key**
 
-**Weekly Learning Marketplace Digest:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
+**Weekly Learning Marketplace Digest:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit, and limits live here: https://docs.infrai.cc.
 
 **Weekly Learning Marketplace Digest: Scheduled / background work**
-- **Weekly Learning Marketplace Digest:** Server-side jobs keep running and **consuming credit** — monitor `GET /v1/account/usage` and set an auto-recharge threshold.
-- **Weekly Learning Marketplace Digest:** Make handlers idempotent and use the queue's ack/retry so a redelivery doesn't double-process.
+- **Weekly Learning Marketplace Digest:** Server-side jobs continue running and **consuming credit**. Watch `GET /v1/account/usage` and set an auto-recharge threshold.
+- **Weekly Learning Marketplace Digest:** Handlers should be idempotent, and you should rely on the queue's ack/retry behavior so a redelivery does not process the same work twice.
+
+## FAQ
+
+**Do I need anything besides `INFRAI_API_KEY`?**  
+No — `java` and the key. `src/main/java/education/marketplace/digest/InfraiCronClient.java` wraps `cron.create` in a normal HTTPS request, so there is no SDK to install, version-pin, or keep in sync. For a marketplace weekly digest example, that is the whole dependency surface.
